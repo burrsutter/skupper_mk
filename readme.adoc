@@ -1,0 +1,165 @@
+=== Setup
+
+----
+cd /Users/burrsutter/11steps/bin
+
+curl -fL https://github.com/skupperproject/skupper-cli/releases/download/0.0.2/skupper-cli-0.0.2-mac-amd64.tgz | tar -xzf -
+
+export PATH=/Users/burrsutter/11steps/bin:$PATH
+
+skupper version 0.0.2
+
+# OR
+go get github.com/skupperproject/skupper-cli/cmd/skupper
+mv $HOME/go/bin/skupper /Users/burrsutter/11steps/bin
+
+export KUBE_EDITOR="code -w"
+----
+
+==== Terminal 1 us-east:
+----
+mkdir us-east
+cd us-east
+export KUBECONFIG="$(pwd)/.kube/config"
+echo $KUBECONFIG
+minikube --profile us-east config set vm-driver virtualbox
+minikube --profile us-east config set kubernetes-version v1.16.0
+minikube --profile us-east start \
+  --service-cluster-ip-range='172.16.4.0/27'
+kubectl create namespace us-east
+kubectl config set-context --current --namespace us-east
+----
+
+==== Terminal 2 eu-north:
+----
+mkdir eu-north
+cd eu-north
+export KUBECONFIG="$(pwd)/.kube/config"
+echo $KUBECONFIG
+minikube --profile eu-north config set vm-driver virtualbox
+minikube --profile eu-north config set kubernetes-version v1.16.0
+minikube --profile eu-north start \
+  --service-cluster-ip-range='172.16.5.0/27'
+kubectl create namespace eu-north
+kubectl config set-context --current --namespace eu-north
+----
+
+==== Terminal 3 tunnel:
+----
+cd us-east
+export KUBECONFIG="$(pwd)/.kube/config"
+echo $KUBECONFIG
+minikube -p us-east tunnel
+----
+
+==== Terminal 4 tunnel:
+----
+cd eu-north
+export KUBECONFIG="$(pwd)/.kube/config"
+echo $KUBECONFIG
+minikube -p eu-north tunnel
+----
+
+==== Terminal 1 us-east:
+----
+skupper status
+skupper not enabled for us-east
+
+skupper init --id us-east
+Waiting for LoadBalancer IP or hostname...
+Skupper is now installed in namespace 'us-east'.  Use 'skupper status' to get more information.
+
+watch skupper status
+Skupper enabled for namespace "us-east". Status pending...
+
+Skupper enabled for namespace "us-east". It is not connected to any other sites.
+
+watch kubectl get pods
+NAME                                      READY   STATUS    RESTARTS
+AGE
+skupper-proxy-controller-658ff7fb-bvpr4   1/1     Running   0
+2m9s
+skupper-router-7566c9df45-vm75f           1/1     Running   0
+2m12s
+----
+
+==== Terminal 2 eu-north:
+----
+skupper status
+skupper not enabled for eu-north
+
+skupper init --id eu-north
+Waiting for LoadBalancer IP or hostname...
+Skupper is now installed in namespace 'eu-north'.  Use 'skupper status' to get more information.
+
+watch kubectl get pods
+----
+
+==== Terminal 1 us-east:
+----
+skupper connection-token ../token.yaml
+kubectl get services
+skupper-internal    LoadBalancer   172.16.4.8   172.16.4.8    55671:30991/TCP,45671:30986/TCP   5m35s
+
+kubectl create deployment hello-world-backend --image quay.io/skupper/hello-world-backend
+
+skupper expose deployment hello-world-backend \
+ --address hello-world \
+ --port 8080 --protocol tcp --target-port 8080
+
+skupper list-exposes
+
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    run: curler
+  name: curler
+spec:
+  containers:
+  - name: curler
+    image: fedora:29 
+    tty: true
+EOF
+
+kubectl exec -it curler /bin/bash
+
+curl hello-world:8080/api/hello
+----
+
+==== Terminal 2 eu-north:
+----
+skupper connect  --connection-name us-east  ../token.yaml
+Skupper is now configured to connect to 172.16.4.8:55671 (name=us-east)
+
+# kubectl create deployment hello-world-backend --image quay.io/skupper/hello-world-backend
+
+# skupper expose deployment hello-world-backend \
+#  --address hello-world \
+#  --port 8080 --protocol tcp --target-port 8080
+
+skupper list-exposes
+
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    run: curler
+  name: curler
+spec:
+  containers:
+  - name: curler
+    image: fedora:29 
+    tty: true
+EOF
+
+kubectl exec -it curler /bin/bash
+
+curl hello-world:8080/api/hello
+----
+
+
+
+skupper unexpose deployment hello-world-backend --address hello-world
