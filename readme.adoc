@@ -101,10 +101,13 @@ skupper connection-token ../token.yaml
 kubectl get services
 skupper-internal    LoadBalancer   172.16.4.8   172.16.4.8    55671:30991/TCP,45671:30986/TCP   5m35s
 
-kubectl create deployment quarked --image quay.io/burrsutter/quarked:1.0.0
+kubectl create deployment myservice --image quay.io/burrsutter/hybrid-responder:1.0.0
+kubectl set env deployment myservice CLOUD_KEY=us-east
 
-skupper expose deployment quarked \
- --address quarked \
+kubectl get services
+
+skupper expose deployment myservice \
+ --address myservice \
  --port 8080 --protocol tcp --target-port 8080
 
 skupper list-exposed
@@ -125,7 +128,10 @@ EOF
 
 kubectl exec -it curler /bin/bash
 
-curl quarked:8080
+curl myservice:8080
+
+curl myservice:8080
+{"hello":"Aloha","cloud":"us-east","pod":"myservice-bbf66df8-bm8hf","count":1}
 ----
 
 ==== Terminal 2 eu-north:
@@ -133,19 +139,16 @@ curl quarked:8080
 skupper connect  --connection-name us-east  ../token.yaml
 Skupper is now configured to connect to 172.16.4.8:55671 (name=us-east)
 
-kubectl create deployment quarked --image quay.io/burrsutter/quarked:1.0.0
+kubectl create deployment myservice --image quay.io/burrsutter/hybrid-responder:1.0.0
+kubectl set env deployment myservice CLOUD_KEY=eu-north
 
-skupper expose deployment quarked \
- --address quarked \
+skupper expose deployment myservice \
+ --address myservice \
  --port 8080 --protocol tcp --target-port 8080
 
 skupper list-exposes
 
 kubectl get services
-NAME                TYPE           CLUSTER-IP    EXTERNAL-IP   PORT(S)                           AGE
-hello-world         ClusterIP      172.16.5.21   <none>        8080/TCP                          13m
-skupper-internal    LoadBalancer   172.16.5.3    172.16.5.3    55671:32102/TCP,45671:32517/TCP   17m
-skupper-messaging   ClusterIP      172.16.5.6    <none>        5671/TCP                          17m
 
 cat <<EOF | kubectl apply -f -
 apiVersion: v1
@@ -163,43 +166,37 @@ EOF
 
 kubectl exec -it curler /bin/bash
 
-curl quarked:8080
+curl myservice:8080
+
+curl myservice:8080
+{"hello":"Aloha","cloud":"eu-north","pod":"myservice-5fd6cf7984-hjjbs","count":1}
 ----
 
 ==== Terminal 2 eu-north:
 ----
-kubectl scale --replicas=0 deployment quarked
+kubectl scale --replicas=0 deployment myservice
 
 kubectl exec -it curler /bin/bash
 
-curl quarked:8080
-# fails-over to us-east's quarked
+curl myservice:8080
+{"hello":"Aloha","cloud":"us-east","pod":"myservice-bbf66df8-bm8hf","count":2}
 
-kubectl scale --replicas=1 deployment quarked
+kubectl scale --replicas=1 deployment myservice
 ----
 
 ==== Terminal 1 us-east:
 ----
-kubectl scale --replicas=0 deployment quarked
+kubectl scale --replicas=0 deployment myservice
 
 kubectl exec -it curler /bin/bash
 
-curl quarked:8080
-# fails-over to eu-north's quarked
+curl myservice:8080
+{"hello":"Aloha","cloud":"eu-north","pod":"myservice-5fd6cf7984-2fvnm","count":1}
+
+kubectl scale --replicas=1 deployment myservice
 ----
 
 
-
-
-kubectl create deployment quarked --image quay.io/burrsutter/quarked:1.0.0
-kubectl expose deployment quarked --port=8080 --type=NodePort
-kubectl delete service quarked
-
-skupper expose deployment quarked \
- --address sk-quarked \
- --port 8080 --protocol tcp --target-port 8080
-
-
-
-skupper unexpose deployment hello-world-backend --address hello-world
-skupper unexpose deployment quarked --address east-quarked
+----
+skupper unexpose deployment myservice --address myservice
+----
