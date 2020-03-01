@@ -1,4 +1,12 @@
+
+=== Overview
+
+Two minikubes simulating two cloud Kubernetes/OpenShift clusters, the same application deployed in both clusters, with bi-directional fail-over.  In the example below, failing over from eu-north to us-east.
+
+image::images/diagram.png[800,600]
+
 === Setup
+
 
 ----
 cd /Users/burrsutter/11steps/bin
@@ -15,6 +23,11 @@ mv $HOME/go/bin/skupper /Users/burrsutter/11steps/bin
 
 export KUBE_EDITOR="code -w"
 ----
+
+Eight (8) Terminals/windows makes this much easier to manage. 
+
+image::images/terminals.png[1300,1000]
+
 
 ==== Terminal 1 us-east:
 ----
@@ -196,6 +209,17 @@ curl myservice:8080
 kubectl scale --replicas=1 deployment myservice
 ----
 
+==== Terminal 2 eu-north:
+----
+kubectl apply -f service.yaml
+IP=$(kubectl get service external-service -o jsonpath="{.spec.clusterIP}")
+while true
+do curl $IP:8080
+sleep .3
+done
+----
+
+If you wish to remove 
 
 ----
 skupper unexpose deployment myservice --address myservice
